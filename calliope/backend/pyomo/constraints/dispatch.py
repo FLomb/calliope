@@ -87,7 +87,18 @@ def load_constraints(backend_model):
             backend_model.loc_techs_storage_inter_min_constraint, backend_model.datesteps,
             rule=storage_inter_min_rule
         )
-
+    if 'loc_tech_carriers_carrier_prodcon_max_constraint' in sets:
+        backend_model.carrier_prodcon_max_constraint = po.Constraint(
+            backend_model.loc_tech_carriers_carrier_prodcon_max_constraint,
+            backend_model.timesteps,
+            rule=carrier_prodcon_max_constraint_rule
+        )
+    if 'loc_tech_carriers_carrier_prodcon_min_constraint' in sets:
+        backend_model.carrier_prodcon_min_constraint = po.Constraint(
+            backend_model.loc_tech_carriers_carrier_prodcon_min_constraint,
+            backend_model.timesteps,
+            rule=carrier_prodcon_min_constraint_rule
+        )
 
 def carrier_production_max_constraint_rule(backend_model, loc_tech_carrier, timestep):
     """
@@ -110,7 +121,6 @@ def carrier_production_max_constraint_rule(backend_model, loc_tech_carrier, time
         backend_model.energy_cap[loc_tech] * timestep_resolution * parasitic_eff
     )
 
-
 def carrier_production_min_constraint_rule(backend_model, loc_tech_carrier, timestep):
     """
     Set minimum carrier production. All technologies except ``conversion_plus``.
@@ -132,6 +142,46 @@ def carrier_production_min_constraint_rule(backend_model, loc_tech_carrier, time
         backend_model.energy_cap[loc_tech] * timestep_resolution * min_use
     )
 
+def carrier_prodcon_max_constraint_rule(backend_model, loc_tech_carrier, timestep):
+    """
+    Set maximum carrier consumption for ``conversion`` technologies whose
+    production is limited by ``consumption_based_cap``.
+
+    .. container:: scrolling-wrapper
+
+        .. math::
+
+
+    """
+    loc_tech = get_loc_tech(loc_tech_carrier)
+    carrier_con = backend_model.carrier_con[loc_tech_carrier, timestep]
+    timestep_resolution = backend_model.timestep_resolution[timestep]
+
+    return carrier_con >= (
+        -1 * backend_model.energy_cap[loc_tech] * timestep_resolution
+    )
+
+def carrier_prodcon_min_constraint_rule(backend_model, loc_tech_carrier, timestep):
+    """
+    Set minimum carrier consumption for ``conversion`` technologies whose
+    production is limited by ``consumption_based_cap``.
+
+    .. container:: scrolling-wrapper
+
+        .. math::
+
+            \\boldsymbol{carrier_{prod}}(loc::tech::carrier, timestep) \\geq energy_{cap}(loc::tech)
+            \\times timestep\\_resolution(timestep) \\times energy_{cap,min\\_use}(loc::tec)
+
+    """
+    loc_tech = get_loc_tech(loc_tech_carrier)
+    carrier_con = backend_model.carrier_con[loc_tech_carrier, timestep]
+    timestep_resolution = backend_model.timestep_resolution[timestep]
+    min_use = get_param(backend_model, 'energy_cap_min_use', (loc_tech, timestep))
+
+    return carrier_con <= (
+        -1 * backend_model.energy_cap[loc_tech] * timestep_resolution * min_use
+    )
 
 def carrier_consumption_max_constraint_rule(backend_model, loc_tech_carrier, timestep):
     """

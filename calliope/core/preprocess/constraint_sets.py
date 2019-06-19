@@ -140,11 +140,24 @@ def generate_constraint_sets(model_run):
     constraint_sets['loc_tech_carriers_carrier_production_max_constraint'] = [
         i for i in sets.loc_tech_carriers_prod
         if i not in sets.loc_tech_carriers_conversion_plus
+        and not constraint_exists(model_run, i.rsplit('::', 1)[0], 'constraints.consumption_based_cap')
         and i.rsplit('::', 1)[0] not in sets.loc_techs_milp
     ]
     constraint_sets['loc_tech_carriers_carrier_production_min_constraint'] = [
         i for i in sets.loc_tech_carriers_prod
         if i not in sets.loc_tech_carriers_conversion_plus
+        and not constraint_exists(model_run, i.rsplit('::', 1)[0], 'constraints.consumption_based_cap')
+        and constraint_exists(model_run, i.rsplit('::', 1)[0], 'constraints.energy_cap_min_use')
+        and i.rsplit('::', 1)[0] not in sets.loc_techs_milp
+    ]
+    constraint_sets['loc_tech_carriers_carrier_prodcon_max_constraint'] = [
+        i for i in sets.loc_tech_carriers_con
+        if constraint_exists(model_run, i.rsplit('::', 1)[0], 'constraints.consumption_based_cap')
+        and i.rsplit('::', 1)[0] not in sets.loc_techs_milp
+    ]
+    constraint_sets['loc_tech_carriers_carrier_prodcon_min_constraint'] = [
+        i for i in sets.loc_tech_carriers_con
+        if constraint_exists(model_run, i.rsplit('::', 1)[0], 'constraints.consumption_based_cap')
         and constraint_exists(model_run, i.rsplit('::', 1)[0], 'constraints.energy_cap_min_use')
         and i.rsplit('::', 1)[0] not in sets.loc_techs_milp
     ]
@@ -159,6 +172,7 @@ def generate_constraint_sets(model_run):
         i for i in sets.loc_tech_carriers_prod
         if i.rsplit('::', 1)[0] in sets.loc_techs_ramping
     ]
+
     # clustering-specific dispatch constraints
     if (model_run.model.get_key('time.function', None) == 'apply_clustering' and
             model_run.model.get_key('time.function_options.storage_inter_cluster', True)):
