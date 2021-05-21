@@ -200,47 +200,44 @@ def run_spores(model_data, timings, interface, backend, build_only):
 
     # Define default scoring function, based on integer scoring method
     # TODO: make the function to run optional
-    def _cap_loc_score_method(scoring_method, results, model_data=None, subset=None):
+    def _cap_loc_score_method(scoring_method, results, model_data=None):
         
         results = results
         scoring_method = scoring_method
-        subset = subset 
+        
 
-        def _cap_loc_score_integer(results, model_data=None, subset=None):
-            if subset is None:
-                subset = {}
-            cap_loc_score = split_loc_techs(results["energy_cap"]).loc[subset]
+        def _cap_loc_score_integer(results, model_data=None):
+            
+            cap_loc_score = split_loc_techs(results["energy_cap"])
             cap_loc_score = cap_loc_score.where(cap_loc_score > 1e-3, other=0)
             cap_loc_score = cap_loc_score.where(cap_loc_score == 0, other=100)
 
             return cap_loc_score.to_pandas()
 
-        def _cap_loc_score_relative_deployment(results, model_data=model_data, subset=None):
-            if subset is None:
-                subset = {}
-            cap_per_loc = split_loc_techs(results["energy_cap"]).loc[subset]
-            cap_per_loc_max = split_loc_techs(model_data["energy_cap_max"]).loc[subset]
+        def _cap_loc_score_relative_deployment(results, model_data=model_data):
+            
+            cap_per_loc = split_loc_techs(results["energy_cap"])
+            cap_per_loc_max = split_loc_techs(model_data["energy_cap_max"])
             cap_loc_score = cap_per_loc / cap_per_loc_max
             cap_loc_score = cap_loc_score.where(cap_loc_score > 1e-3, other=0)
             cap_loc_score = cap_loc_score.where(cap_loc_score == 0, other=100)
 
             return cap_loc_score.to_pandas()
 
-        def _cap_loc_score_random(results, model_data=None, subset=None):
-            if subset is None:
-                subset = {}
-            cap_loc_score = split_loc_techs(results["energy_cap"]).loc[subset].to_pandas()
+        def _cap_loc_score_random(results, model_data=None):
+            
+            cap_loc_score = split_loc_techs(results["energy_cap"]).to_pandas()
             cap_loc_score.iloc[:,:] = np.random.randint(0,1000,size=(len(cap_loc_score.index),len(cap_loc_score.columns)))
 
             return cap_loc_score
 
         allowed_methods = {
-            'integer': _cap_loc_score_integer,
+            'integer': _cap_loc_score_integer
             'relative_deployment': _cap_loc_score_relative_deployment,
             'random': _cap_loc_score_random
             }
 
-        return(allowed_methods[scoring_method](results, model_data, subset))
+        return(allowed_methods[scoring_method](results, model_data))
 
     # Define function to update "spores_score" after each iteration of the method
     def _update_spores_score(backend_model, cap_loc_score):
