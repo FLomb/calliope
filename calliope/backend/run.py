@@ -232,7 +232,7 @@ def run_spores(model_data, timings, interface, backend, build_only):
             return cap_loc_score
 
         allowed_methods = {
-            'integer': _cap_loc_score_integer
+            'integer': _cap_loc_score_integer,
             'relative_deployment': _cap_loc_score_relative_deployment,
             'random': _cap_loc_score_random
             }
