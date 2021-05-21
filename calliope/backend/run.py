@@ -200,12 +200,13 @@ def run_spores(model_data, timings, interface, backend, build_only):
 
     # Define default scoring function, based on integer scoring method
     # TODO: make the function to run optional
-    def _cap_loc_score_method(scoring_method, results, model_data, subset=None):
+    def _cap_loc_score_method(scoring_method, results, model_data=None, subset=None):
         
         results = results
-        scoring_method = scoring_method   
+        scoring_method = scoring_method
+        subset = subset 
 
-        def _cap_loc_score_integer(results, model_data, subset=None):
+        def _cap_loc_score_integer(results, model_data=None, subset=None):
             if subset is None:
                 subset = {}
             cap_loc_score = split_loc_techs(results["energy_cap"]).loc[subset]
@@ -214,7 +215,7 @@ def run_spores(model_data, timings, interface, backend, build_only):
 
             return cap_loc_score.to_pandas()
 
-        def _cap_loc_score_relative_deployment(results, model_data, subset=None):
+        def _cap_loc_score_relative_deployment(results, model_data=model_data, subset=None):
             if subset is None:
                 subset = {}
             cap_per_loc = split_loc_techs(results["energy_cap"]).loc[subset]
@@ -225,7 +226,7 @@ def run_spores(model_data, timings, interface, backend, build_only):
 
             return cap_loc_score.to_pandas()
 
-        def _cap_loc_score_random(results, model_data, subset=None):
+        def _cap_loc_score_random(results, model_data=None, subset=None):
             if subset is None:
                 subset = {}
             cap_loc_score = split_loc_techs(results["energy_cap"]).loc[subset].to_pandas()
@@ -239,7 +240,7 @@ def run_spores(model_data, timings, interface, backend, build_only):
             'random': _cap_loc_score_random
             }
 
-        return(allowed_methods[scoring_method](results, model_data))
+        return(allowed_methods[scoring_method](results, model_data, subset))
 
     # Define function to update "spores_score" after each iteration of the method
     def _update_spores_score(backend_model, cap_loc_score):
@@ -266,6 +267,8 @@ def run_spores(model_data, timings, interface, backend, build_only):
         ]
         for var in results.data_vars:
             results[var].attrs["is_result"] = 1
+        for var in inputs_to_keep.data_vars:
+            inputs_to_keep[var].attrs["is_result"] = 0
         if model_data is not None:
             datasets = [inputs_to_keep, model_data, results]
         else:
@@ -316,7 +319,7 @@ def run_spores(model_data, timings, interface, backend, build_only):
             interface.update_pyomo_param(
                 backend_model, "objective_cost_class", objective_cost_class
             )
-            print("Updating spores scores")
+            print("Updating capacity scores")
             # Update "spores_score" based on previous iteration
             _update_spores_score(backend_model, cum_scores)
 
@@ -333,19 +336,14 @@ def run_spores(model_data, timings, interface, backend, build_only):
     
     else:
         print("Skipping cost optimal run and using model_data as a direct SPORES result")
-        cum_scores = (
-            model_data.cost_energy_cap.loc[{"costs": spores_score}]
-            .to_series()
-            .dropna()
-            .rename_axis(index="loc_techs_investment_cost")
-        )
-        print(f"Input SPORES scores amount to {cum_scores.sum()}")
-        cum_scores += _cap_loc_score_method(scoring_method,model_data,model_data)
-        print(f"SPORES scores being used for next run amount to {cum_scores.sum()}")
+        cum_scores = split_loc_techs(model_data["cost_energy_cap"]).loc['spores_score'].to_pandas().fillna(0)
+        print(f"Input SPORES scores amount to {cum_scores.sum().sum()}")
+        cum_scores = cum_scores + _cap_loc_score_method(scoring_method,model_data,model_data)
+        print(f"SPORES scores being used for next run amount to {cum_scores.sum().sum()}")
         slack_costs = model_data.group_cost_max.loc[
             {"group_names_cost_max": slack_group}
         ].dropna("costs")
-        results, backend_model, opt = run_plan(
+        results, backend_model = run_plan(
             model_data, timings, backend, build_only=True
         )
         print("Updating objective")
@@ -356,7 +354,6 @@ def run_spores(model_data, timings, interface, backend, build_only):
         # Update "spores_score" based on previous iteration
         _update_spores_score(backend_model, cum_scores)
         init_spore = model_data.spores.max().item()
-
 
     # Iterate over the number of SPORES requested by the user
     for _spore in range(init_spore + 1, n_spores + 1):
@@ -385,7 +382,7 @@ def run_spores(model_data, timings, interface, backend, build_only):
             )
         else:
             results, backend_model = run_plan(
-                model_data, timings, backend, build_only, backend_rerun=backend_model
+                model_data, timings, backend, build_only=False, backend_rerun=backend_model
             )
 
         if results.attrs["termination_condition"] in ["optimal", "feasible"]:
@@ -402,7 +399,13 @@ def run_spores(model_data, timings, interface, backend, build_only):
         else:
             _warn_on_infeasibility()
             break
-
+        log_time(
+            logger,
+            timings,
+            "run_solution_returned",
+            time_since_run_start=True,
+            comment=f"Backend: generated solution array for the SPORE {_spore}",
+        )
         # TODO: make this function work with the spores dimension,
         # so that postprocessing can take place in core/model.py, as with run_plan and run_operate
 
