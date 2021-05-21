@@ -164,12 +164,20 @@ def load_constraints(backend_model):
             )
 
         if "group_cost_{}".format(sense) in model_data_dict:
+            costs_to_keep = []
+            for k in list(model_data_dict["group_cost_{}".format(sense)]):
+                try: 
+                    model_data_dict["group_cost_{}".format(sense)][k]
+                    costs_to_keep.append(k[0])
+                except:
+                    continue
+            costs_to_keep = set(costs_to_keep)
             setattr(
                 backend_model,
                 "group_cost_{}_constraint".format(sense),
                 po.Constraint(
                     getattr(backend_model, "group_names_cost_{}".format(sense)),
-                    backend_model.costs,
+                    costs_to_keep,
                     [sense],
                     rule=cost_cap_constraint_rule,
                 ),

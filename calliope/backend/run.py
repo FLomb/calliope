@@ -188,9 +188,14 @@ def run_spores(model_data, timings, interface, backend, build_only):
     save_per_spore_path = run_config["spores_options"]["save_per_spore_path"]
     skip_cost_op = run_config["spores_options"]["skip_cost_op"]
 
-    loc_tech_df = (
-        model_data.cost_energy_cap.loc[{"costs": [spores_score]}].to_series().dropna()
-    )
+    solver = run_config["solver"]
+    solver_io = run_config.get("solver_io", None)
+    solver_options = run_config.get("solver_options", None)
+    save_logs = run_config.get("save_logs", None)
+
+    # loc_tech_df = (
+    #     model_data.cost_energy_cap.loc[{"costs": [spores_score]}].to_series().dropna()
+    # )
     spores_results = {}
 
     # Define default scoring function, based on integer scoring method
@@ -255,17 +260,24 @@ def run_spores(model_data, timings, interface, backend, build_only):
         )
 
     def _save_spore(backend_model, results, spore_num, model_data=None):
+        inputs = interface.access_pyomo_model_inputs(backend_model)
+        inputs_to_keep = inputs[
+            ["cost_energy_cap", "group_cost_max", "objective_cost_class"]
+        ]
+        for var in results.data_vars:
+            results[var].attrs["is_result"] = 1
         if model_data is not None:
-            datasets = [model_data, results]
+            datasets = [inputs_to_keep, model_data, results]
         else:
-            datasets = [results]
+            datasets = [inputs_to_keep, results]
         new_ds = xr.combine_by_coords(
             datasets, compat="override", combine_attrs="no_conflicts"
         )
+        new_ds = new_ds.assign_coords(spores=("spores", [spore_num]))
         print(f"Saving SPORE {spore_num} to {save_per_spore_path.format(spore_num)}")
         io.save_netcdf(new_ds, save_per_spore_path.format(spore_num))
 
-    if skip_cost_op is False:
+    if not skip_cost_op:
         # Run once for the 'cost-optimal' solution
         results, backend_model = run_plan(
             model_data, timings, backend, build_only
@@ -273,10 +285,12 @@ def run_spores(model_data, timings, interface, backend, build_only):
         if build_only:
             return results, backend_model  # We have what we need, so break out of the loop
 
+        init_spore = 0
         if results.attrs["termination_condition"] in ["optimal", "feasible"]:
             results.attrs["objective_function_value"] = backend_model.obj()
             if save_per_spore is True:
-                _save_spore(backend_model, results, 0, model_data=model_data)
+                _save_spore(backend_model, results, init_spore, model_data=model_data)
+                pass
             # Storing results and scores in the specific dictionaries
             spores_results[0] = results
             print("Getting capacity scores")
@@ -305,59 +319,90 @@ def run_spores(model_data, timings, interface, backend, build_only):
             print("Updating spores scores")
             # Update "spores_score" based on previous iteration
             _update_spores_score(backend_model, cum_scores)
+
+            log_time(
+                logger,
+                timings,
+                "run_solution_returned",
+                time_since_run_start=True,
+                comment="Backend: generated solution array for the cost-optimal case",
+            )
         else:
             _warn_on_infeasibility()
             return results, backend_model
     
     else:
+        print("Skipping cost optimal run and using model_data as a direct SPORES result")
         cum_scores = (
             model_data.cost_energy_cap.loc[{"costs": spores_score}]
             .to_series()
             .dropna()
             .rename_axis(index="loc_techs_investment_cost")
         )
+        print(f"Input SPORES scores amount to {cum_scores.sum()}")
+        cum_scores += _cap_loc_score_method(scoring_method,model_data,model_data)
+        print(f"SPORES scores being used for next run amount to {cum_scores.sum()}")
         slack_costs = model_data.group_cost_max.loc[
             {"group_names_cost_max": slack_group}
         ].dropna("costs")
         results, backend_model, opt = run_plan(
             model_data, timings, backend, build_only=True
         )
+        print("Updating objective")
+        interface.update_pyomo_param(
+            backend_model, "objective_cost_class", objective_cost_class
+        )
+        print("Updating capacity scores")
+        # Update "spores_score" based on previous iteration
+        _update_spores_score(backend_model, cum_scores)
+        init_spore = model_data.spores.max().item()
 
-    log_time(
-        logger,
-        timings,
-        "run_solution_returned",
-        time_since_run_start=True,
-        comment="Backend: generated solution array for the cost-optimal case",
-    )
 
     # Iterate over the number of SPORES requested by the user
-    for _spore in range(1, n_spores+1):
+    for _spore in range(init_spore + 1, n_spores + 1):
         print(f"Running SPORES {_spore}")
-        results, backend_model = run_plan(
-            model_data, timings, backend, build_only, backend_rerun=backend_model
-        )
+        if _spore > 1 and skip_cost_op is False:
+            results = backend.solve_model(
+                backend_model,
+                solver=solver,
+                solver_io=solver_io,
+                solver_options=solver_options,
+                save_logs=save_logs,
+            )
+            termination = backend.load_results(backend_model, results)
+            log_time(
+                logger, timings, "run_results_loaded", comment="Backend: loaded results"
+            )
+            results = backend.get_result_array(backend_model, model_data)
+            results.attrs["termination_condition"] = termination
+
+            log_time(
+                logger,
+                timings,
+                "run_solution_returned",
+                time_since_run_start=True,
+                comment="Backend: generated solution array",
+            )
+        else:
+            results, backend_model = run_plan(
+                model_data, timings, backend, build_only, backend_rerun=backend_model
+            )
 
         if results.attrs["termination_condition"] in ["optimal", "feasible"]:
             results.attrs["objective_function_value"] = backend_model.obj()
             if save_per_spore is True:
-                _save_spore(backend_model, results, _spore)
+                _save_spore(backend_model, results, _spore, model_data=None)
             # Storing results and scores in the specific dictionaries
             spores_results[_spore] = results
             print("Updating capacity scores")
             cum_scores += _cap_loc_score_method(scoring_method,results,model_data)
             # Update "spores_score" based on previous iteration
             _update_spores_score(backend_model, cum_scores)
+            skip_cost_op = False
         else:
             _warn_on_infeasibility()
             break
-        log_time(
-            logger,
-            timings,
-            "run_solution_returned",
-            time_since_run_start=True,
-            comment="Backend: generated solution array for the cost-optimal case",
-        )
+
         # TODO: make this function work with the spores dimension,
         # so that postprocessing can take place in core/model.py, as with run_plan and run_operate
 
