@@ -204,7 +204,6 @@ def run_spores(model_data, timings, interface, backend, build_only):
         
         results = results
         scoring_method = scoring_method
-        
 
         def _cap_loc_score_integer(results, model_data=None):
             
@@ -231,10 +230,26 @@ def run_spores(model_data, timings, interface, backend, build_only):
 
             return cap_loc_score
 
+        def _cap_loc_score_evolving_average(results, model_data=None):
+            
+            average_cap_per_loc = results["evolving_average_energy_cap"]
+            cap_per_loc = split_loc_techs(results["energy_cap"])
+            cap_loc_score = ((abs(average_cap_per_loc - cap_per_loc) / average_cap_per_loc)).fillna(0)
+            if cap_loc_score.sum().sum() == 0:
+                cap_loc_score = split_loc_techs(results["energy_cap"])
+                cap_loc_score = cap_loc_score.where(cap_loc_score > 1e-3, other=0)
+                cap_loc_score = cap_loc_score.where(cap_loc_score == 0, other=100)
+                cap_loc_score = cap_loc_score.to_pandas()
+            else:
+                cap_loc_score = (cap_loc_score**-1).to_pandas().replace(np.inf,0)
+
+            return cap_loc_score
+
         allowed_methods = {
             'integer': _cap_loc_score_integer,
             'relative_deployment': _cap_loc_score_relative_deployment,
-            'random': _cap_loc_score_random
+            'random': _cap_loc_score_random,
+            'evolving_average': _cap_loc_score_evolving_average
             }
 
         return(allowed_methods[scoring_method](results, model_data))
@@ -288,6 +303,8 @@ def run_spores(model_data, timings, interface, backend, build_only):
         init_spore = 0
         if results.attrs["termination_condition"] in ["optimal", "feasible"]:
             results.attrs["objective_function_value"] = backend_model.obj()
+            evolving_average_cap = split_loc_techs(results["energy_cap"])
+            results["evolving_average_energy_cap"] = evolving_average_cap
             if save_per_spore is True:
                 _save_spore(backend_model, results, init_spore, model_data=model_data)
                 pass
@@ -333,6 +350,7 @@ def run_spores(model_data, timings, interface, backend, build_only):
     
     else:
         print("Skipping cost optimal run and using model_data as a direct SPORES result")
+        evolving_average_cap = model_data["evolving_average_energy_cap"]
         cum_scores = split_loc_techs(model_data["cost_energy_cap"]).loc['spores_score'].to_pandas().fillna(0)
         print(f"Input SPORES scores amount to {cum_scores.sum().sum()}")
         cum_scores = cum_scores + _cap_loc_score_method(scoring_method,model_data,model_data)
@@ -384,6 +402,8 @@ def run_spores(model_data, timings, interface, backend, build_only):
 
         if results.attrs["termination_condition"] in ["optimal", "feasible"]:
             results.attrs["objective_function_value"] = backend_model.obj()
+            evolving_average_cap = (evolving_average_cap*_spore + split_loc_techs(results["energy_cap"]))/(_spore+1)
+            results["evolving_average_energy_cap"] = evolving_average_cap
             if save_per_spore is True:
                 _save_spore(backend_model, results, _spore, model_data=None)
             # Storing results and scores in the specific dictionaries
