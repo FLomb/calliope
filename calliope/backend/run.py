@@ -353,7 +353,10 @@ def run_spores(model_data, timings, interface, backend, build_only):
         evolving_average_cap = model_data["evolving_average_energy_cap"]
         cum_scores = split_loc_techs(model_data["cost_energy_cap"]).loc['spores_score'].to_pandas().fillna(0)
         print(f"Input SPORES scores amount to {cum_scores.sum().sum()}")
-        cum_scores = cum_scores + _cap_loc_score_method(scoring_method,model_data,model_data)
+        if scoring_method == "evolving_average":
+            cum_scores = _cap_loc_score_method(scoring_method,model_data,model_data)
+        else:
+            cum_scores = cum_scores + _cap_loc_score_method(scoring_method,model_data,model_data)
         print(f"SPORES scores being used for next run amount to {cum_scores.sum().sum()}")
         slack_costs = model_data.group_cost_max.loc[
             {"group_names_cost_max": slack_group}
@@ -409,7 +412,10 @@ def run_spores(model_data, timings, interface, backend, build_only):
             # Storing results and scores in the specific dictionaries
             spores_results[_spore] = results
             print("Updating capacity scores")
-            cum_scores += _cap_loc_score_method(scoring_method,results,model_data)
+            if scoring_method == "evolving_average":
+                cum_scores = _cap_loc_score_method(scoring_method,results,model_data)
+            else:
+                cum_scores += _cap_loc_score_method(scoring_method,results,model_data)
             # Update "spores_score" based on previous iteration
             _update_spores_score(backend_model, cum_scores)
             skip_cost_op = False
