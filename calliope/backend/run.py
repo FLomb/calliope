@@ -208,7 +208,7 @@ def run_spores(model_data, timings, interface, backend, build_only):
         def _cap_loc_score_integer(results, model_data=None):
             
             cap_loc_score = split_loc_techs(results["energy_cap"])
-            cap_loc_score = cap_loc_score.where(cap_loc_score > 1e-3, other=0)
+            cap_loc_score = cap_loc_score.where(cap_loc_score > 1e5, other=0)
             cap_loc_score = cap_loc_score.where(cap_loc_score == 0, other=100)
 
             return cap_loc_score.to_pandas()
@@ -219,14 +219,13 @@ def run_spores(model_data, timings, interface, backend, build_only):
             cap_per_loc_max = split_loc_techs(model_data["energy_cap_max"])
             cap_loc_score = cap_per_loc / cap_per_loc_max
             cap_loc_score = cap_loc_score.where(cap_loc_score > 1e-3, other=0)
-            cap_loc_score = cap_loc_score.where(cap_loc_score == 0, other=100)
-
+            
             return cap_loc_score.to_pandas()
 
         def _cap_loc_score_random(results, model_data=None):
             
             cap_loc_score = split_loc_techs(results["energy_cap"]).to_pandas()
-            cap_loc_score.iloc[:,:] = np.random.randint(0,1000,size=(len(cap_loc_score.index),len(cap_loc_score.columns)))
+            cap_loc_score.iloc[:,:] = np.random.choice([0,100],size=(len(cap_loc_score.index),len(cap_loc_score.columns)))
 
             return cap_loc_score
 
