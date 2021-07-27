@@ -208,8 +208,8 @@ def run_spores(model_data, timings, interface, backend, build_only):
         def _cap_loc_score_integer(results, model_data=None):
             
             cap_loc_score = split_loc_techs(results["energy_cap"])
-            cap_per_loc_max = split_loc_techs(model_data["energy_cap_max"])
-            min_relevant_size = 0.01*cap_per_loc_max.max().values
+            # cap_per_loc_max = split_loc_techs(model_data["energy_cap_max"])
+            min_relevant_size = 0.01*cap_loc_score.max().values
             cap_loc_score = cap_loc_score.where(cap_loc_score > min_relevant_size, other=0)
             cap_loc_score = cap_loc_score.where(cap_loc_score == 0, other=100)
 
