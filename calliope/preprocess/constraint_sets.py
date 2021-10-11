@@ -62,6 +62,11 @@ def generate_constraint_sets(model_run):
         for i in sets.loc_techs_store
         if constraint_exists(model_run, i, "constraints.storage_discharge_depth")
     ]
+    constraint_sets["loc_techs_storage_charge_depth"] = [
+        i
+        for i in sets.loc_techs_store
+        if constraint_exists(model_run, i, "constraints.storage_charge_depth")
+    ]
     constraint_sets["carriers_reserve_margin_constraint"] = [
         i
         for i in sets.carriers

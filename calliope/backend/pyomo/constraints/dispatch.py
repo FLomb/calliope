@@ -60,6 +60,13 @@ def load_constraints(backend_model):
             rule=storage_discharge_depth_constraint_rule,
         )
 
+    if "loc_techs_storage_charge_depth" in sets:
+        backend_model.storage_charge_depth_constraint = po.Constraint(
+        backend_model.loc_techs_storage_charge_depth,
+        backend_model.timesteps,
+        rule=storage_charge_depth_constraint_rule,
+    )
+
     if "loc_tech_carriers_ramping_constraint" in sets:
         backend_model.ramping_up_constraint = po.Constraint(
             backend_model.loc_tech_carriers_ramping_constraint,
@@ -221,6 +228,25 @@ def storage_discharge_depth_constraint_rule(backend_model, loc_tech, timestep):
         >= storage_discharge_depth * backend_model.storage_cap[loc_tech]
     )
 
+def storage_charge_depth_constraint_rule(backend_model, loc_tech, timestep):
+    """
+    Forces storage state of charge to be smaller than the allowed depth of charge.
+
+    .. container:: scrolling-wrapper
+
+        .. math::
+
+            \\boldsymbol{storage}(loc::tech, timestep) <=
+            \\boldsymbol{storage_charge_depth}\\forall loc::tech \\in loc::techs_{storage}, \\forall timestep \\in timesteps
+
+    """
+    storage_charge_depth = get_param(
+        backend_model, "storage_charge_depth", loc_tech
+    )
+    return (
+        backend_model.storage[loc_tech, timestep]
+        <= storage_charge_depth * backend_model.storage_cap[loc_tech]
+    )
 
 def ramping_up_constraint_rule(backend_model, loc_tech_carrier, timestep):
     """

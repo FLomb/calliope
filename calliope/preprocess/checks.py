@@ -821,12 +821,39 @@ def check_model_data(model_data):
                         " storage initial is greater than or equal to storage_discharge_depth"
                     )
 
+    # Check for storage_initial being greater than or equal to the storage_charge_depth
+
+    if hasattr(model_data, "loc_techs_store"):
+        for loc_tech in model_data.loc_techs_store.values:
+            if hasattr(model_data, "storage_initial") and hasattr(
+                model_data, "storage_charge_depth"
+            ):
+                if (
+                    model_data.storage_initial.loc[{"loc_techs_store": loc_tech}].values
+                    > model_data.storage_charge_depth.loc[
+                        {"loc_techs_store": loc_tech}
+                    ].values
+                ):
+                    errors.append(
+                        "storage_initial is greater than storage_charge_depth."
+                        " Please change the model configuration to ensure that"
+                        " storage initial is smaller than or equal to storage_charge_depth"
+                    )
+
     # Check for storage_inter_cluster not being used together with storage_discharge_depth
     if hasattr(model_data, "clusters") and hasattr(
         model_data, "storage_discharge_depth"
     ):
         errors.append(
             "storage_discharge_depth is currently not allowed when time clustering is active."
+        )
+    
+    # Check for storage_inter_cluster not being used together with storage_charge_depth
+    if hasattr(model_data, "clusters") and hasattr(
+        model_data, "storage_charge_depth"
+    ):
+        errors.append(
+            "storage_charge_depth is currently not allowed when time clustering is active."
         )
 
     return model_data, comments, model_warnings, errors

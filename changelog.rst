@@ -5,6 +5,7 @@ Release History
 
 0.6.8 (dev)
 ------------------
+|new| Introduced a `storage_charge_depth` constraint, which allows to set a maximum stored-energy level to be preserved by a storage technology.
 
 0.6.7 (2021-06-29)
 ------------------
