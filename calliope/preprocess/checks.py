@@ -808,23 +808,45 @@ def check_model_data(model_data):
         for loc_tech in model_data.loc_techs_store.values:
             if hasattr(model_data, "storage_initial") and hasattr(
                 model_data, "storage_discharge_depth"
-            ):                
+            ):
+                storage_disch_depth_dim=np.shape(model_data.storage_discharge_depth.loc[
+                        {"loc_techs_store": loc_tech}
+                    ])
+                
                 if (
-                    model_data.storage_initial.loc[{"loc_techs_store": loc_tech}].values
-                    < model_data.storage_discharge_depth.loc[
-                        {"loc_techs_store": loc_tech}
-                    ].values[0]
-                    or
-                    model_data.storage_initial.loc[{"loc_techs_store": loc_tech}].values
-                    < model_data.storage_discharge_depth.loc[
-                        {"loc_techs_store": loc_tech}
-                    ].values[-1]
+                    len(storage_disch_depth_dim)==0
                 ):
-                    errors.append(
-                        "storage_initial is smaller than storage_discharge_depth."
-                        " Please change the model configuration to ensure that"
-                        " storage initial is greater than or equal to storage_discharge_depth"
-                    )
+                    if (
+                        model_data.storage_initial.loc[{"loc_techs_store": loc_tech}].values
+                        < model_data.storage_discharge_depth.loc[
+                            {"loc_techs_store": loc_tech}
+                        ].values
+                    ):
+                        errors.append(
+                            "storage_initial is smaller than storage_discharge_depth."
+                            " Please change the model configuration to ensure that"
+                            " storage initial is greater than or equal to storage_discharge_depth"
+                        )
+                
+                if (
+                    len(storage_disch_depth_dim)>0
+                ):                    
+                    if (
+                        model_data.storage_initial.loc[{"loc_techs_store": loc_tech}].values
+                        < model_data.storage_discharge_depth.loc[
+                            {"loc_techs_store": loc_tech}
+                        ].values[0]
+                        or
+                        model_data.storage_initial.loc[{"loc_techs_store": loc_tech}].values
+                        < model_data.storage_discharge_depth.loc[
+                            {"loc_techs_store": loc_tech}
+                        ].values[-1]
+                    ):
+                        errors.append(
+                            "storage_initial is smaller than storage_discharge_depth."
+                            " Please change the model configuration to ensure that"
+                            " storage initial is greater than or equal to storage_discharge_depth"
+                        )
 
     # Check for storage_initial being smaller than or equal to the initial and final storage_charge_depth 
 
@@ -832,22 +854,110 @@ def check_model_data(model_data):
         for loc_tech in model_data.loc_techs_store.values:
             if hasattr(model_data, "storage_initial") and hasattr(
                 model_data, "storage_charge_depth"
-            ):              
+            ):
+                storage_ch_depth_dim=np.shape(model_data.storage_charge_depth.loc[
+                        {"loc_techs_store": loc_tech}
+                    ])
                 if (
-                    model_data.storage_initial.loc[{"loc_techs_store": loc_tech}].values
-                    > model_data.storage_charge_depth.loc[
+                    len(storage_ch_depth_dim)==0
+                ):
+                
+                    if (
+                        model_data.storage_initial.loc[{"loc_techs_store": loc_tech}].values
+                        > model_data.storage_charge_depth.loc[
+                            {"loc_techs_store": loc_tech}
+                        ].values
+                    ):
+                        errors.append(
+                            "storage_initial is greater than storage_charge_depth."
+                            " Please change the model configuration to ensure that"
+                            " storage initial is smaller than or equal to storage_charge_depth"
+                        )
+                if (
+                    len(storage_ch_depth_dim)>0
+                ):
+                
+                    if (
+                        model_data.storage_initial.loc[{"loc_techs_store": loc_tech}].values
+                        > model_data.storage_charge_depth.loc[
+                            {"loc_techs_store": loc_tech}
+                        ].values[0]
+                        or
+                        model_data.storage_initial.loc[{"loc_techs_store": loc_tech}].values
+                        > model_data.storage_charge_depth.loc[
+                            {"loc_techs_store": loc_tech}
+                        ].values[-1]
+                    ):
+                        errors.append(
+                            "storage_initial is greater than storage_charge_depth."
+                            " Please change the model configuration to ensure that"
+                            " storage initial is smaller than or equal to storage_charge_depth"
+                        )
+
+    # Check for storage_discharge_depth being smaller than or equal to storage_charge_depth
+
+    if hasattr(model_data, "loc_techs_store"):
+        for loc_tech in model_data.loc_techs_store.values:
+            if hasattr(model_data, "storage_discharge_depth") and hasattr(
+                model_data, "storage_charge_depth"
+            ):
+                storage_ch_depth_dim=np.shape(model_data.storage_charge_depth.loc[
                         {"loc_techs_store": loc_tech}
-                    ].values[0]
+                    ])
+
+                storage_disch_depth_dim=np.shape(model_data.storage_discharge_depth.loc[
+                        {"loc_techs_store": loc_tech}
+                    ])
+
+                storage_depth_diff=0
+
+                if (
+                    len(storage_ch_depth_dim)==0
+                ):
+                    storage_ch_depth_min=model_data.storage_charge_depth.loc[
+                        {"loc_techs_store": loc_tech}
+                    ].values
+
+                if (
+                    len(storage_disch_depth_dim)==0
+                ): 
+                    storage_disch_depth_max=model_data.storage_discharge_depth.loc[
+                        {"loc_techs_store": loc_tech}
+                    ].values      
+
+                if (
+                    len(storage_ch_depth_dim)>0
+                ):
+                    storage_ch_depth_min=min(model_data.storage_charge_depth.loc[
+                        {"loc_techs_store": loc_tech}
+                    ])
+
+                if (
+                    len(storage_disch_depth_dim)>0
+                ):
+                    storage_disch_depth_max=max(model_data.storage_charge_depth.loc[
+                        {"loc_techs_store": loc_tech}
+                    ])
+
+                if (
+                    len(storage_disch_depth_dim)>0
+                    and
+                    len(storage_ch_depth_dim)>0
+                ):
+                    storage_depth_diff=min(model_data.storage_charge_depth.loc[{"loc_techs_store": loc_tech}].values
+                    -model_data.storage_discharge_depth.loc[{"loc_techs_store": loc_tech}].values
+                    )
+                    storage_ch_depth_min = storage_disch_depth_max
+
+                if (
+                    storage_ch_depth_min < storage_disch_depth_max
                     or
-                    model_data.storage_initial.loc[{"loc_techs_store": loc_tech}].values
-                    > model_data.storage_charge_depth.loc[
-                        {"loc_techs_store": loc_tech}
-                    ].values[-1]
+                    storage_depth_diff < 0
                 ):
                     errors.append(
-                        "storage_initial is greater than storage_charge_depth."
+                        "storage_charge_depth is smaller than storage_discharge_depth."
                         " Please change the model configuration to ensure that"
-                        " storage initial is smaller than or equal to storage_charge_depth"
+                        " storage_charge_depth is greater than or equal to storage_discharge_depth"
                     )
 
     # Check for storage_inter_cluster not being used together with storage_discharge_depth
