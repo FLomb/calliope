@@ -802,18 +802,23 @@ def check_model_data(model_data):
                 ):
                     model_data.storage_initial.loc[{"loc_techs_store": loc_tech}] = 0.0
 
-    # Check for storage_initial being greater than or equal to the storage_discharge_depth
+    # Check for storage_initial being greater than or equal to the initial and final storage_discharge_depth
 
     if hasattr(model_data, "loc_techs_store"):
         for loc_tech in model_data.loc_techs_store.values:
             if hasattr(model_data, "storage_initial") and hasattr(
                 model_data, "storage_discharge_depth"
-            ):
+            ):                
                 if (
                     model_data.storage_initial.loc[{"loc_techs_store": loc_tech}].values
                     < model_data.storage_discharge_depth.loc[
                         {"loc_techs_store": loc_tech}
-                    ].values
+                    ].values[0]
+                    or
+                    model_data.storage_initial.loc[{"loc_techs_store": loc_tech}].values
+                    < model_data.storage_discharge_depth.loc[
+                        {"loc_techs_store": loc_tech}
+                    ].values[-1]
                 ):
                     errors.append(
                         "storage_initial is smaller than storage_discharge_depth."
@@ -821,18 +826,23 @@ def check_model_data(model_data):
                         " storage initial is greater than or equal to storage_discharge_depth"
                     )
 
-    # Check for storage_initial being greater than or equal to the storage_charge_depth
+    # Check for storage_initial being smaller than or equal to the initial and final storage_charge_depth 
 
     if hasattr(model_data, "loc_techs_store"):
         for loc_tech in model_data.loc_techs_store.values:
             if hasattr(model_data, "storage_initial") and hasattr(
                 model_data, "storage_charge_depth"
-            ):
+            ):              
                 if (
                     model_data.storage_initial.loc[{"loc_techs_store": loc_tech}].values
                     > model_data.storage_charge_depth.loc[
                         {"loc_techs_store": loc_tech}
-                    ].values
+                    ].values[0]
+                    or
+                    model_data.storage_initial.loc[{"loc_techs_store": loc_tech}].values
+                    > model_data.storage_charge_depth.loc[
+                        {"loc_techs_store": loc_tech}
+                    ].values[-1]
                 ):
                     errors.append(
                         "storage_initial is greater than storage_charge_depth."

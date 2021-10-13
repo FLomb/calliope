@@ -5,6 +5,11 @@ Release History
 
 0.6.8 (dev)
 ------------------
+
+|changed| Initial_storage is then checked if smaller or greater than initial and final value storage_charge_depth and storage_discharge_depth.
+
+|changed| Storage_discharge_depth and storage_charge_depth are now allowed to be timeseries.
+
 |new| Introduced a `storage_charge_depth` constraint, which allows to set a maximum stored-energy level to be preserved by a storage technology.
 
 0.6.7 (2021-06-29)

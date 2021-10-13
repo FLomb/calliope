@@ -221,7 +221,7 @@ def storage_discharge_depth_constraint_rule(backend_model, loc_tech, timestep):
 
     """
     storage_discharge_depth = get_param(
-        backend_model, "storage_discharge_depth", loc_tech
+        backend_model, "storage_discharge_depth", (loc_tech, timestep)
     )
     return (
         backend_model.storage[loc_tech, timestep]
@@ -241,7 +241,7 @@ def storage_charge_depth_constraint_rule(backend_model, loc_tech, timestep):
 
     """
     storage_charge_depth = get_param(
-        backend_model, "storage_charge_depth", loc_tech
+        backend_model, "storage_charge_depth", (loc_tech, timestep)
     )
     return (
         backend_model.storage[loc_tech, timestep]
