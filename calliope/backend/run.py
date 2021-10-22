@@ -363,7 +363,7 @@ def run_spores(model_data, timings, interface, backend, build_only):
             cum_scores = _cap_loc_score_method(scoring_method,model_data,model_data)
         else:
             cum_scores = cum_scores + _cap_loc_score_method(scoring_method,model_data,model_data)
-        print(f"Input SPORES scores amount to {cum_scores.sum()}")
+        print(f"SPORES scores being used for next run amount to {cum_scores.sum().sum()}")
 
         slack_costs = model_data.group_cost_max.loc[
             {"group_names_cost_max": slack_group}
@@ -372,6 +372,14 @@ def run_spores(model_data, timings, interface, backend, build_only):
         results, backend_model, opt = run_plan(
             model_data, timings, backend, build_only=True
         )
+        
+        print("Updating objective")
+        interface.update_pyomo_param(
+            backend_model, "objective_cost_class", objective_cost_class
+        )
+        print("Updating capacity scores")
+        # Update "spores_score" based on previous iteration
+        _update_spores_score(backend_model, cum_scores)
         init_spore = model_data.spores.max().item()
 
     # Iterate over the number of SPORES requested by the user
