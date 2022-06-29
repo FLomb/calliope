@@ -195,7 +195,10 @@ def run_spores(
     if "spores" in model_data.dims and model_data.spores.size == 1:
         model_data = model_data.squeeze("spores")
 
-    spores_techs = split_loc_techs(model_data.cost_energy_cap.loc[{'costs':spores_config["score_cost_class"]}]).to_pandas().dropna(axis=1).columns
+    if "spores" in model_data.dims and model_data.spores.size > 1:
+        spores_techs = split_loc_techs(model_data.cost_energy_cap.loc[{'costs':spores_config["score_cost_class"], 'spores': 0}]).to_pandas().dropna(axis=1, how='all').columns
+    else:
+        spores_techs = split_loc_techs(model_data.cost_energy_cap.loc[{'costs':spores_config["score_cost_class"]}]).to_pandas().dropna(axis=1, how='all').columns
 
     def _cap_loc_score_method(scoring_method, results, model_data=None):
         results = results
@@ -230,13 +233,16 @@ def run_spores(
 
             average_cap_per_loc = results["evolving_average_energy_cap"].loc[{'techs': spores_techs}]
             cap_per_loc = split_loc_techs(results["energy_cap"]).loc[{'techs': spores_techs}]
-            cap_loc_score = ((abs(average_cap_per_loc - cap_per_loc) / average_cap_per_loc)).fillna(0)
-            if cap_loc_score.sum().sum() == 0:
+            cap_loc_score = ((abs(average_cap_per_loc - cap_per_loc) / average_cap_per_loc))
+            if cap_loc_score.sum().sum() == 0: # which should happen in the first iteration
                 cap_loc_score = split_loc_techs(results["energy_cap"]).loc[{'techs': spores_techs}]
-                cap_loc_score = cap_loc_score.where(cap_loc_score > 1e-3, other=0)
+                min_relevant_size = 0.01*cap_loc_score.max().values
+                cap_loc_score = cap_loc_score.where(cap_loc_score > min_relevant_size, other=0)
                 cap_loc_score = cap_loc_score.where(cap_loc_score == 0, other=100)
                 cap_loc_score = cap_loc_score.to_pandas()
             else:
+                # If capacity is exactly the same as the average, we give the relative difference an arbitrarily small value
+                cap_loc_score = cap_loc_score.where(cap_loc_score != 0, 0.001).fillna(0) 
                 cap_loc_score = (cap_loc_score**-1).to_pandas().replace(np.inf,0)
 
             return cap_loc_score
@@ -379,9 +385,8 @@ def run_spores(
         )
 
     init_spores_scores = (
-        model_data.cost_energy_cap.loc[{"costs": spores_config["score_cost_class"]}]
-        .to_series()
-        .dropna()
+        split_loc_techs(model_data.cost_energy_cap.loc[{"costs": spores_config["score_cost_class"]}])
+        .to_pandas()
     )
     spores_results = {}
 
@@ -461,7 +466,10 @@ def run_spores(
             # Storing results and scores in the specific dictionaries
             _add_results_to_list(backend_model, spores_results, results, _spore)
             print(f"Updating capacity scores from {cumulative_spores_scores.sum()}...")
-            cumulative_spores_scores += _cap_loc_score_method(spores_config["scoring_method"],results,model_data)
+            if spores_config["scoring_method"] == "evolving_average":
+                cumulative_spores_scores = _cap_loc_score_method(spores_config["scoring_method"],results,model_data)
+            else:
+                cumulative_spores_scores = init_spores_scores + _cap_loc_score_method(spores_config["scoring_method"],results,model_data)
             print(f"... to {cumulative_spores_scores.sum()}")
             # Update "spores_score" based on previous iteration
             _update_spores_score(backend_model, cumulative_spores_scores)
