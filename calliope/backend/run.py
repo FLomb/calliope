@@ -17,6 +17,7 @@ from calliope.core.attrdict import AttrDict
 from calliope.core.util.dataset import split_loc_techs
 from calliope.core.util.logging import log_time
 from calliope.core.util.observed_dict import UpdateObserverDict
+from calliope.postprocess.results import postprocess_model_results
 
 logger = logging.getLogger(__name__)
 
@@ -184,18 +185,79 @@ def run_spores(
         comment="Backend: starting model run in SPORES mode",
     )
 
-    def _cap_loc_score_default(results):
-        # Define default scoring function, based on integer scoring method
-        # TODO: make it possible to point to a custom function instead of this one
-        cap_loc_score = xr.where(results.energy_cap > 1e-3, 100, 0).loc[
-            {"loc_techs": results.loc_techs_investment_cost}
-        ]
-        return cap_loc_score.to_series().rename_axis(index="loc_techs_investment_cost")
+    run_config = UpdateObserverDict(
+        initial_yaml_string=model_data.attrs["run_config"],
+        name="run_config",
+        observer=model_data,
+    )
+
+    spores_config = run_config["spores_options"]
+    if "spores" in model_data.dims and model_data.spores.size == 1:
+        model_data = model_data.squeeze("spores")
+
+    spores_techs = split_loc_techs(model_data.cost_energy_cap.loc[{'costs':spores_config["score_cost_class"]}]).to_pandas().dropna(axis=1).columns
+
+    def _cap_loc_score_method(scoring_method, results, model_data=None):
+        results = results
+        scoring_method = scoring_method
+
+        def _cap_loc_score_integer(results, model_data=None):
+
+            cap_loc_score = split_loc_techs(results["energy_cap"]).loc[{'techs': spores_techs}]
+            min_relevant_size = 0.01*cap_loc_score.max().values
+            cap_loc_score = cap_loc_score.where(cap_loc_score > min_relevant_size, other=0)
+            cap_loc_score = cap_loc_score.where(cap_loc_score == 0, other=100)
+
+            return cap_loc_score.to_pandas()
+
+        def _cap_loc_score_relative_deployment(results, model_data=model_data):
+
+            cap_per_loc = split_loc_techs(results["energy_cap"]).loc[{'techs': spores_techs}]
+            cap_per_loc_max = split_loc_techs(model_data["energy_cap_max"]).loc[{'techs': spores_techs}]
+            cap_loc_score = cap_per_loc / cap_per_loc_max
+            cap_loc_score = cap_loc_score.where(cap_loc_score > 1e-3, other=0)
+
+            return cap_loc_score.to_pandas()
+
+        def _cap_loc_score_random(results, model_data=None):
+
+            cap_loc_score = split_loc_techs(results["energy_cap"]).to_pandas()[spores_techs]
+            cap_loc_score.iloc[:,:] = np.random.choice([0,100],size=(len(cap_loc_score.index),len(cap_loc_score.columns)))
+
+            return cap_loc_score
+
+        def _cap_loc_score_evolving_average(results, model_data=None):
+
+            average_cap_per_loc = results["evolving_average_energy_cap"].loc[{'techs': spores_techs}]
+            cap_per_loc = split_loc_techs(results["energy_cap"]).loc[{'techs': spores_techs}]
+            cap_loc_score = ((abs(average_cap_per_loc - cap_per_loc) / average_cap_per_loc)).fillna(0)
+            if cap_loc_score.sum().sum() == 0:
+                cap_loc_score = split_loc_techs(results["energy_cap"]).loc[{'techs': spores_techs}]
+                cap_loc_score = cap_loc_score.where(cap_loc_score > 1e-3, other=0)
+                cap_loc_score = cap_loc_score.where(cap_loc_score == 0, other=100)
+                cap_loc_score = cap_loc_score.to_pandas()
+            else:
+                cap_loc_score = (cap_loc_score**-1).to_pandas().replace(np.inf,0)
+
+            return cap_loc_score
+
+        allowed_methods = {
+            'integer': _cap_loc_score_integer,
+            'relative_deployment': _cap_loc_score_relative_deployment,
+            'random': _cap_loc_score_random,
+            'evolving_average': _cap_loc_score_evolving_average
+            }
+
+        return(allowed_methods[scoring_method](results, model_data))
 
     # Define function to update "spores_score" after each iteration of the method
     def _update_spores_score(backend_model, cap_loc_score):
         print("Updating loc::tech spores scores")
-        loc_tech_score_dict = cap_loc_score.to_dict()
+        loc_tech_score_dict = {
+            (spores_config["score_cost_class"], "{}::{}".format(i, j)): k
+            for (i, j), k in cap_loc_score.stack().items()
+            if "{}::{}".format(i, j) in model_data.loc_techs_investment_cost
+        }
 
         interface.update_pyomo_param(
             backend_model, opt, "cost_energy_cap", loc_tech_score_dict
@@ -209,7 +271,7 @@ def run_spores(
 
     def _get_updated_spores_inputs(backend_model):
         inputs = interface.access_pyomo_model_inputs(backend_model)
-        inputs_to_keep = ["cost_energy_cap", "group_cost_max"]
+        inputs_to_keep = ["cost_energy_cap", "group_cost_max", "objective_cost_class"]
         return inputs[inputs_to_keep]
 
     def _combine_spores_results_and_inputs(
@@ -219,6 +281,8 @@ def run_spores(
         for var_data in results.data_vars.values():
             if "is_result" not in var_data.attrs.keys():
                 var_data.attrs["is_result"] = 1
+        for var in inputs_to_keep.data_vars:
+            inputs_to_keep[var].attrs["is_result"] = 0
         if model_data is not None:
             datasets = [inputs_to_keep, model_data, results]
         else:
@@ -313,18 +377,9 @@ def run_spores(
         model_data = _combine_spores_results_and_inputs(
             backend_rerun, xr.Dataset(), 0, model_data=model_data
         )
-    run_config = UpdateObserverDict(
-        initial_yaml_string=model_data.attrs["run_config"],
-        name="run_config",
-        observer=model_data,
-    )
-
-    spores_config = run_config["spores_options"]
-    if "spores" in model_data.dims and model_data.spores.size == 1:
-        model_data = model_data.squeeze("spores")
 
     init_spores_scores = (
-        model_data.cost_energy_cap.loc[{"costs": [spores_config["score_cost_class"]]}]
+        model_data.cost_energy_cap.loc[{"costs": spores_config["score_cost_class"]}]
         .to_series()
         .dropna()
     )
@@ -341,11 +396,19 @@ def run_spores(
         _update_to_spores_objective(backend_model)
     elif results.attrs["termination_condition"] in ["optimal", "feasible"]:
         results.attrs["objective_function_value"] = backend_model.obj()
+        if init_spore == 0:
+            evolving_average_cap = split_loc_techs(results["energy_cap"])
+            results["evolving_average_energy_cap"] = evolving_average_cap
+        else:
+            evolving_average_cap = results["evolving_average_energy_cap"]
         if spores_config["save_per_spore"] is True:
             _save_spore(backend_model, results, init_spore, model_data=model_data)
         # Storing results and scores in the specific dictionaries
         _add_results_to_list(backend_model, spores_results, results, 0)
-        cumulative_spores_scores = init_spores_scores + _cap_loc_score_default(results)
+        if spores_config["scoring_method"] == "evolving_average":
+            cumulative_spores_scores = _cap_loc_score_method(spores_config["scoring_method"],results,model_data)
+        else:
+            cumulative_spores_scores = init_spores_scores + _cap_loc_score_method(spores_config["scoring_method"],results,model_data)
         # Set group constraint "cost_max" equal to slacked cost
         _update_slack_cost_constraint(backend_model)
         _update_to_spores_objective(backend_model)
@@ -391,12 +454,14 @@ def run_spores(
 
         if results.attrs["termination_condition"] in ["optimal", "feasible"]:
             results.attrs["objective_function_value"] = backend_model.obj()
+            evolving_average_cap = (evolving_average_cap*_spore + split_loc_techs(results["energy_cap"]))/(_spore+1)
+            results["evolving_average_energy_cap"] = evolving_average_cap
             if spores_config["save_per_spore"] is True:
                 _save_spore(backend_model, results, _spore)
             # Storing results and scores in the specific dictionaries
             _add_results_to_list(backend_model, spores_results, results, _spore)
             print(f"Updating capacity scores from {cumulative_spores_scores.sum()}...")
-            cumulative_spores_scores += _cap_loc_score_default(results)
+            cumulative_spores_scores += _cap_loc_score_method(spores_config["scoring_method"],results,model_data)
             print(f"... to {cumulative_spores_scores.sum()}")
             # Update "spores_score" based on previous iteration
             _update_spores_score(backend_model, cumulative_spores_scores)
