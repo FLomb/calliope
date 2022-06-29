@@ -185,8 +185,18 @@ def run_spores(
         comment="Backend: starting model run in SPORES mode",
     )
 
-    spores_techs = split_loc_techs(model_data.cost_energy_cap.loc[{'costs':[spores_config["score_cost_class"]]}]).to_pandas().dropna(axis=1).columns
-    
+    run_config = UpdateObserverDict(
+        initial_yaml_string=model_data.attrs["run_config"],
+        name="run_config",
+        observer=model_data,
+    )
+
+    spores_config = run_config["spores_options"]
+    if "spores" in model_data.dims and model_data.spores.size == 1:
+        model_data = model_data.squeeze("spores")
+
+    spores_techs = split_loc_techs(model_data.cost_energy_cap.loc[{'costs':spores_config["score_cost_class"]}]).to_pandas().dropna(axis=1).columns
+
     def _cap_loc_score_method(scoring_method, results, model_data=None):
         results = results
         scoring_method = scoring_method
@@ -222,7 +232,7 @@ def run_spores(
             cap_per_loc = split_loc_techs(results["energy_cap"]).loc[{'techs': spores_techs}]
             cap_loc_score = ((abs(average_cap_per_loc - cap_per_loc) / average_cap_per_loc)).fillna(0)
             if cap_loc_score.sum().sum() == 0:
-                cap_loc_score = split_loc_techs(results["energy_cap"]).loc[{'techs': spores_techs}])
+                cap_loc_score = split_loc_techs(results["energy_cap"]).loc[{'techs': spores_techs}]
                 cap_loc_score = cap_loc_score.where(cap_loc_score > 1e-3, other=0)
                 cap_loc_score = cap_loc_score.where(cap_loc_score == 0, other=100)
                 cap_loc_score = cap_loc_score.to_pandas()
@@ -367,18 +377,9 @@ def run_spores(
         model_data = _combine_spores_results_and_inputs(
             backend_rerun, xr.Dataset(), 0, model_data=model_data
         )
-    run_config = UpdateObserverDict(
-        initial_yaml_string=model_data.attrs["run_config"],
-        name="run_config",
-        observer=model_data,
-    )
-
-    spores_config = run_config["spores_options"]
-    if "spores" in model_data.dims and model_data.spores.size == 1:
-        model_data = model_data.squeeze("spores")
 
     init_spores_scores = (
-        model_data.cost_energy_cap.loc[{"costs": [spores_config["score_cost_class"]]}]
+        model_data.cost_energy_cap.loc[{"costs": spores_config["score_cost_class"]}]
         .to_series()
         .dropna()
     )
