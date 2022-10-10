@@ -469,7 +469,7 @@ def run_spores(
             if spores_config["scoring_method"] == "evolving_average":
                 cumulative_spores_scores = _cap_loc_score_method(spores_config["scoring_method"],results,model_data)
             else:
-                cumulative_spores_scores = init_spores_scores + _cap_loc_score_method(spores_config["scoring_method"],results,model_data)
+                cumulative_spores_scores = cumulative_spores_scores + _cap_loc_score_method(spores_config["scoring_method"],results,model_data)
             print(f"... to {cumulative_spores_scores.sum()}")
             # Update "spores_score" based on previous iteration
             _update_spores_score(backend_model, cumulative_spores_scores)
