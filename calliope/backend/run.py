@@ -197,8 +197,10 @@ def run_spores(
 
     if "spores" in model_data.dims and model_data.spores.size > 1:
         spores_techs = split_loc_techs(model_data.cost_energy_cap.loc[{'costs':spores_config["score_cost_class"], 'spores': 0}]).to_pandas().dropna(axis=1, how='all').columns
+        spores_locs = split_loc_techs(model_data.cost_energy_cap.loc[{'costs':spores_config["score_cost_class"], 'spores': 0}]).to_pandas().dropna(axis=1, how='all').dropna(axis=0, how='all').index
     else:
         spores_techs = split_loc_techs(model_data.cost_energy_cap.loc[{'costs':spores_config["score_cost_class"]}]).to_pandas().dropna(axis=1, how='all').columns
+        spores_locs = split_loc_techs(model_data.cost_energy_cap.loc[{'costs':spores_config["score_cost_class"]}]).to_pandas().dropna(axis=1, how='all').dropna(axis=0, how='all').index
 
     def _cap_loc_score_method(scoring_method, results, model_data=None):
         results = results
@@ -206,7 +208,7 @@ def run_spores(
 
         def _cap_loc_score_integer(results, model_data=None):
 
-            cap_loc_score = split_loc_techs(results["energy_cap"]).loc[{'techs': spores_techs}]
+            cap_loc_score = split_loc_techs(results["energy_cap"]).loc[{'techs': spores_techs, 'locs': spores_locs}]
             min_relevant_size = 0.01*cap_loc_score.max().values
             cap_loc_score = cap_loc_score.where(cap_loc_score > min_relevant_size, other=0)
             cap_loc_score = cap_loc_score.where(cap_loc_score == 0, other=100)
@@ -215,8 +217,8 @@ def run_spores(
 
         def _cap_loc_score_relative_deployment(results, model_data=model_data):
 
-            cap_per_loc = split_loc_techs(results["energy_cap"]).loc[{'techs': spores_techs}]
-            cap_per_loc_max = split_loc_techs(model_data["energy_cap_max"]).loc[{'techs': spores_techs}]
+            cap_per_loc = split_loc_techs(results["energy_cap"]).loc[{'techs': spores_techs, 'locs': spores_locs}]
+            cap_per_loc_max = split_loc_techs(model_data["energy_cap_max"]).loc[{'techs': spores_techs, 'locs': spores_locs}]
             cap_loc_score = cap_per_loc / cap_per_loc_max
             cap_loc_score = cap_loc_score.where(cap_loc_score > 1e-3, other=0)
 
@@ -224,18 +226,18 @@ def run_spores(
 
         def _cap_loc_score_random(results, model_data=None):
 
-            cap_loc_score = split_loc_techs(results["energy_cap"]).to_pandas()[spores_techs]
+            cap_loc_score = split_loc_techs(results["energy_cap"]).to_pandas().loc[spores_locs][spores_techs]
             cap_loc_score.iloc[:,:] = np.random.choice([0,100],size=(len(cap_loc_score.index),len(cap_loc_score.columns)))
 
             return cap_loc_score
 
         def _cap_loc_score_evolving_average(results, model_data=None):
 
-            average_cap_per_loc = results["evolving_average_energy_cap"].loc[{'techs': spores_techs}]
-            cap_per_loc = split_loc_techs(results["energy_cap"]).loc[{'techs': spores_techs}]
+            average_cap_per_loc = results["evolving_average_energy_cap"].loc[{'techs': spores_techs, 'locs': spores_locs}]
+            cap_per_loc = split_loc_techs(results["energy_cap"]).loc[{'techs': spores_techs, 'locs': spores_locs}]
             cap_loc_score = ((abs(average_cap_per_loc - cap_per_loc) / average_cap_per_loc))
             if cap_loc_score.sum().sum() == 0: # which should happen in the first iteration
-                cap_loc_score = split_loc_techs(results["energy_cap"]).loc[{'techs': spores_techs}]
+                cap_loc_score = split_loc_techs(results["energy_cap"]).loc[{'techs': spores_techs, 'locs': spores_locs}]
                 min_relevant_size = 0.01*cap_loc_score.max().values
                 cap_loc_score = cap_loc_score.where(cap_loc_score > min_relevant_size, other=0)
                 cap_loc_score = cap_loc_score.where(cap_loc_score == 0, other=100)
