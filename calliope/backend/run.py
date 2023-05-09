@@ -147,15 +147,15 @@ def run_plan(
             logger, timings, "run_results_loaded", comment="Backend: loaded results"
         )
 
-        if termination in ["optimal", "feasible"]:
-            results = backend.get_result_array(backend_model, model_data)
-            results.attrs["termination_condition"] = termination
-            if "persistent" in opt.name and persistent is True:
-                results.attrs["objective_function_value"] = opt.get_model_attr("ObjVal")
-            else:
-                results.attrs["objective_function_value"] = backend_model.obj()
+        # if termination in ["optimal", "feasible"]:
+        results = backend.get_result_array(backend_model, model_data)
+        results.attrs["termination_condition"] = termination
+        if "persistent" in opt.name and persistent is True:
+            results.attrs["objective_function_value"] = opt.get_model_attr("ObjVal")
         else:
-            results = xr.Dataset(attrs={"termination_condition": termination})
+            results.attrs["objective_function_value"] = backend_model.obj()
+        # else:
+        #     results = xr.Dataset(attrs={"termination_condition": termination})
 
         log_time(
             logger,
