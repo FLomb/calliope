@@ -1,1 +1,1 @@
-__version__ = "0.6.6-eurocalliope"
+__version__ = "0.6.6+eurocalliope"
